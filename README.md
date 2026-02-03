@@ -577,7 +577,7 @@
           { term: 'Thực tại khách quan', define: 'Những thứ tồn tại ngoài ý thức, không phụ thuộc con người.' },
           { term: 'Phủ định biện chứng', define: 'Sự thay thế cái cũ bằng cái mới nhưng có kế thừa.' },
           { term: 'Điểm nút', define: 'Thời điểm mà sự tích lũy về lượng đủ để thay đổi về chất.' },
-          { term: 'Hình thái KT-XH', define: 'Xã hội ở một giai đoạn lịch sử nh��t định với kiểu quan hệ sản xuất đặc trưng.' }
+          { term: 'Hình thái KT-XH', define: 'Xã hội ở một giai đoạn lịch sử nhất định với kiểu quan hệ sản xuất đặc trưng.' }
         ],
         get filteredGlossary() {
           return this.glossary.filter(i => i.term.toLowerCase().includes(this.searchQuery.toLowerCase()));
