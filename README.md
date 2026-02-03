@@ -621,5 +621,20 @@
 
     AOS.init();
   </script>
+/* fix gradient visibility on Safari/WebKit */
+.hero-title span {
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+}
+
+/* fallback for hero title if gradient fails */
+.hero-title { color: #e6eef8; }
+
+/* explanation box theme support */
+.explain-box { background: #f8fafc; color: #0f172a; padding: .75rem 1rem; border-radius: .75rem; border:1px solid #e2e8f0; text-align:left;}
+.dark .explain-box { background: rgba(255,255,255,0.03); color: #e6eef8; border-color: rgba(255,255,255,0.06); }
 </body>
 </html>
+
