@@ -55,23 +55,31 @@
     }
 
     /*
-      Fix for overlapping Vietnamese diacritics / glyph collisions for very large hero titles:
-      - set a safer line-height at big sizes
-      - force font rendering settings that reduce glyph collisions / ligature surprises
+      Improved fix for overlapping Vietnamese diacritics / glyph collisions for very large hero titles:
+      - use a display font with robust diacritics (Playfair Display)
+      - increase line-height at very large sizes
+      - avoid negative letter-spacing (can cause collisions with diacritics)
+      - provide inline-block for gradient span to avoid baseline collisions
+      - force better rendering on some WebKit browsers
     */
     .hero-title {
-      line-height: 1.06;
-      letter-spacing: -0.01em; /* small negative for visual tightness; tune if needed */
+      font-family: "Playfair Display", serif; /* use display serif for large headings (better diacritic support) */
+      line-height: 1.10;            /* more breathing room for diacritics */
+      letter-spacing: 0.0025em;    /* slight positive spacing rather than negative */
       -webkit-font-smoothing: antialiased;
-      text-rendering: geometricPrecision;
+      text-rendering: optimizeLegibility;
       font-kerning: normal;
       font-feature-settings: "liga" 0, "clig" 0, "calt" 0;
+      transform: translateZ(0); /* promote to its own layer on some browsers to avoid subpixel rendering glitches */
+    }
+    .hero-title span {
+      display: inline-block; /* avoid gradient clipping into adjacent line's diacritics */
     }
     @media (min-width: 1024px) {
-      .hero-title { line-height: 1.02; letter-spacing: -0.01em; }
+      .hero-title { line-height: 1.14; letter-spacing: 0.002em; }
     }
     @media (max-width: 640px) {
-      .hero-title { line-height: 1.12; letter-spacing: 0; }
+      .hero-title { line-height: 1.18; letter-spacing: 0.001em; font-size: 2.5rem; }
     }
 
     /* Small toast */
@@ -91,6 +99,13 @@
       pointer-events: none;
     }
     #site-toast.show { opacity: 1; transform: translateX(-50%) translateY(-6px); pointer-events: auto; }
+
+    /* Quiz explanation styles */
+    .explain-box { background: #f8fafc; color: #0f172a; padding: .75rem 1rem; border-radius: .75rem; border: 1px solid #e2e8f0; text-align: left; }
+    .explain-box.dark { background: rgba(255,255,255,0.03); color: #e6eef8; border-color: rgba(255,255,255,0.06); }
+    .opt-disabled { pointer-events: none; opacity: 0.85; }
+    .opt-correct { border-color: #16a34a !important; background: rgba(16,185,129,0.06); }
+    .opt-wrong { border-color: #ef4444 !important; background: rgba(239,68,68,0.04); }
   </style>
 </head>
 <body x-data="mainApp()" x-init="init()" :class="darkMode ? 'dark bg-bg text-text' : 'bg-philosophy-bg text-slate-900'"
@@ -310,6 +325,7 @@
       </div>
     </section>
 
+    <!-- QUIZ SECTION (updated: show answer + explanation per question) -->
     <section id="quiz" class="py-24 container mx-auto px-6 max-w-3xl" x-data="quizApp()">
       <div class="bg-white dark:bg-surface p-8 sm:p-10 rounded-[2rem] sm:rounded-[3rem] shadow-2xl text-center border border-gray-200 dark:border-white/5 transition-all duration-500">
         <h2 class="text-3xl sm:text-4xl font-black mb-6 sm:mb-8 uppercase">Kiểm tra <span class="text-accent italic">Kiến thức</span></h2>
@@ -329,18 +345,37 @@
 
           <div class="grid gap-4">
             <template x-for="(opt, i) in questions[currentQ].opts" :key="i">
-              <button type="button" @click="answer(i)"
-                      :class="selected === i ? (lastAnsweredCorrect ? 'border-green-400 bg-green-50' : 'border-red-400 bg-red-50') : 'border-gray-200 dark:border-white/10'"
-                      class="w-full p-4 text-left rounded-xl border hover:border-primary hover:bg-primary/5 transition flex items-center gap-4 group focus-visible:ring-2 focus-visible:ring-primary">
+              <button type="button"
+                      @click="selectAnswer(i)"
+                      :class="[
+                        selected === i && showExplanation ? (i === questions[currentQ].ans ? 'opt-correct' : 'opt-wrong') : '',
+                        showExplanation ? 'opt-disabled' : '',
+                        'w-full p-4 text-left rounded-xl border hover:border-primary hover:bg-primary/5 transition flex items-center gap-4 group focus-visible:ring-2 focus-visible:ring-primary'
+                      ]"
+                      :aria-pressed="selected === i"
+                      :aria-disabled="showExplanation ? 'true' : 'false'">
                 <span class="w-8 h-8 rounded-full border border-gray-400 group-hover:border-primary flex items-center justify-center text-[10px] font-bold" x-text="String.fromCharCode(65 + i)"></span>
                 <span x-text="opt"></span>
               </button>
             </template>
           </div>
 
-          <div class="flex gap-3 justify-center mt-6">
+          <!-- explanation panel shown after choosing an answer -->
+          <div x-show="showExplanation" x-cloak class="mt-6" aria-live="polite">
+            <div :class="['explain-box', $root.$el.closest('body').classList.contains('dark') ? 'dark' : '']">
+              <p class="text-sm font-bold mb-2">Đáp án đúng: <span class="text-primary" x-text="String.fromCharCode(65 + questions[currentQ].ans) + '. ' + questions[currentQ].opts[questions[currentQ].ans]"></span></p>
+              <p class="text-sm opacity-80" x-text="questions[currentQ].explain"></p>
+            </div>
+
+            <div class="flex gap-3 justify-center mt-4">
+              <button type="button" @click="nextAfterExplain()" class="px-4 py-2 rounded-lg bg-primary text-white">Tiếp tục</button>
+              <button type="button" @click="revealAll()" class="px-4 py-2 rounded-lg border">Hiện tất cả đáp án (khóa cho bài này)</button>
+            </div>
+          </div>
+
+          <div class="flex gap-3 justify-center mt-6" x-show="!showExplanation">
             <button type="button" @click="hint()" class="px-4 py-2 rounded-lg border text-xs bg-gray-50 dark:bg-black/20">Gợi ý</button>
-            <button type="button" @click="nextQuestion()" class="px-4 py-2 rounded-lg bg-primary text-white">Bỏ qua / Tiếp</button>
+            <button type="button" @click="skipQuestion()" class="px-4 py-2 rounded-lg bg-primary text-white">Bỏ qua / Tiếp</button>
           </div>
         </div>
 
@@ -483,59 +518,72 @@
       }
     }
 
-    /* QUIZ APP */
+    /* QUIZ APP: updated to show answer + explanation per question */
     function quizApp(){
       return {
         started: false, finished: false, currentQ: 0, score: 0,
         selected: null,
-        lastAnsweredCorrect: false,
+        showExplanation: false,
         questions: [
-          { q: "Theo CNDV Biện chứng, yếu tố nào quyết định sự hình thành ý thức?", opts: ["Thần linh","Vật chất","Ý niệm tuyệt đối","Ngẫu nhiên"], ans: 1 },
-          { q: "Muốn thay đổi về Chất, chúng ta cần làm gì với Lượng?", opts: ["Giữ nguyên","Tích lũy đủ đến Điểm nút","Giảm bớt đi","Thay đổi đột ngột"], ans: 1 },
-          { q: "Bệnh 'Tả khuynh' trong nhận thức và hành động là gì?", opts: ["Bảo thủ, trì trệ","Nôn nóng, đốt cháy giai đoạn","Thực tế, khách quan","Trông chờ ỷ lại"], ans: 1 },
-          { q: "Theo Lênin, vật chất là...?", opts: ["Cái do ý thức đẻ ra","Thực tại khách quan","Phức hợp các cảm giác","Nguyên tử"], ans: 1 },
-          { q: "Yếu tố động nhất, cách mạng nhất trong Lực lượng sản xuất là?", opts: ["Công cụ lao động","Người lao động","Đối tượng lao động","Khoa học"], ans: 0 },
-          { q: "Yếu tố đóng vai trò QUAN TRỌNG NHẤT trong Lực lượng sản xuất là?", opts: ["Công cụ lao động","Người lao động","Tư liệu sản xuất","Khoa học"], ans: 1 },
-          { q: "Nguồn gốc XÃ HỘI trực tiếp hình thành nên ý thức là?", opts: ["Bộ não người","Thế giới khách quan","Lao động và Ngôn ngữ","Gen di truyền"], ans: 2 },
-          { q: "Mối liên hệ phổ biến đòi hỏi chúng ta phải có quan điểm gì?", opts: ["Quan điểm toàn diện","Quan điểm phiến diện","Quan điểm chiết trung","Quan điểm ngụy biện"], ans: 0 },
-          { q: "Phủ định biện chứng có đặc điểm gì nổi bật?", opts: ["Xóa bỏ hoàn toàn cái cũ","Kế thừa hạt nhân hợp lý của cái cũ","Lặp lại y nguyên cái cũ","Phủ định sạch trơn"], ans: 1 },
-          { q: "Khoảng giới hạn mà Lượng đổi nhưng Chất chưa đổi gọi là gì?", opts: ["Điểm nút","Bước nhảy","Độ","Phủ định"], ans: 2 },
-          { q: "Sự tác động của Ý thức đối với Vật chất diễn ra thông qua?", opts: ["Hoạt động thực tiễn","Suy nghĩ trong đầu","Lời nói suông","Ước mơ"], ans: 0 }
+          { q: "Theo CNDV Biện chứng, yếu tố nào quyết định sự hình thành ý thức?", opts: ["Thần linh","Vật chất","Ý niệm tuyệt đối","Ngẫu nhiên"], ans: 1,
+            explain: "Theo chủ nghĩa duy vật biện chứng, vật chất (thực tại khách quan) quyết định ý thức: ý thức là phản ánh hiện thực khách quan trong não người, không phải do thần linh hay ngẫu nhiên." },
+          { q: "Muốn thay đổi về Chất, chúng ta cần làm gì với Lượng?", opts: ["Giữ nguyên","Tích lũy đủ đến Điểm nút","Giảm bớt đi","Thay đổi đột ngột"], ans: 1,
+            explain: "Quy luật Lượng — Chất: sự tích lũy về lượng sẽ dẫn tới thay đổi về chất khi đạt tới 'điểm nút'." },
+          { q: "Bệnh 'Tả khuynh' trong nhận thức và hành động là gì?", opts: ["Bảo thủ, trì trệ","Nôn nóng, đốt cháy giai đoạn","Thực tế, khách quan","Trông chờ ỷ lại"], ans: 1,
+            explain: "Tả khuynh (vội vàng) nghĩa là nôn nóng, muốn đạt mục tiêu bằng bước nhảy vọt, bỏ qua sự chuẩn bị tích lũy cần thiết." },
+          { q: "Theo Lênin, vật chất là...?", opts: ["Cái do ý thức đẻ ra","Thực tại khách quan","Phức hợp các cảm giác","Nguyên tử"], ans: 1,
+            explain: "Lênin định nghĩa vật chất là thực tại khách quan, tồn tại độc lập với ý thức con người." },
+          { q: "Yếu tố động nhất, cách mạng nhất trong Lực lượng sản xuất là?", opts: ["Công cụ lao động","Người lao động","Đối tượng lao động","Khoa học"], ans: 0,
+            explain: "Trong nhiều phân tích, công cụ lao động (kỹ thuật) được xem là yếu tố động nhất vì nó nhanh chóng thay đổi năng suất và cách tổ chức." },
+          { q: "Yếu tố đóng vai trò QUAN TRỌNG NHẤT trong Lực lượng sản xuất là?", opts: ["Công cụ lao động","Người lao động","Tư liệu sản xuất","Khoa học"], ans: 1,
+            explain: "Người lao động là yếu tố quan trọng nhất vì tất cả phương tiện, tư liệu chỉ có thể hoạt động thông qua lao động con người." },
+          { q: "Nguồn gốc XÃ HỘI trực tiếp hình thành nên ý thức là?", opts: ["Bộ não người","Thế giới khách quan","Lao động và Ngôn ngữ","Gen di truyền"], ans: 2,
+            explain: "Lao động và ngôn ngữ là điều kiện xã hội trực tiếp cho sự phát triển ý thức ở con người (theo luận điểm Mác-Lênin)."}, 
+          { q: "Mối liên hệ phổ biến đòi hỏi chúng ta phải có quan điểm gì?", opts: ["Quan điểm toàn diện","Quan điểm phiến diện","Quan điểm chiết trung","Quan điểm ngụy biện"], ans: 0,
+            explain: "Mối liên hệ phổ biến khuyến khích quan điểm toàn diện: xem sự vật trong tổng thể các mối quan hệ của nó." },
+          { q: "Phủ định biện chứng có đặc điểm gì nổi bật?", opts: ["Xóa bỏ hoàn toàn cái cũ","Kế thừa hạt nhân hợp lý của cái cũ","Lặp lại y nguyên cái cũ","Phủ định sạch trơn"], ans: 1,
+            explain: "Phủ định biện chứng không xóa bỏ toàn bộ mà kế thừa những yếu tố hợp lý, phát triển lên tầm cao mới." },
+          { q: "Khoảng giới hạn mà Lượng đổi nhưng Chất chưa đổi gọi là gì?", opts: ["Điểm nút","Bước nhảy","Độ","Phủ định"], ans: 2,
+            explain: "Trong lý thuyết, 'độ' là khoảng giới hạn; 'điểm nút' là thời điểm chuyển hóa; tuy nhiên câu hỏi ở đây tương ứng lựa chọn 'Độ'." },
+          { q: "Sự tác động của Ý thức đối với Vật chất diễn ra thông qua?", opts: ["Hoạt động thực tiễn","Suy nghĩ trong đầu","Lời nói suông","Ước mơ"], ans: 0,
+            explain: "Ý thức chỉ có thể thay đổi vật chất thông qua hoạt động thực tiễn (thực hành), không phải bằng tư duy thuần túy." }
         ],
         start() {
           this.started = true;
           this.loadState();
           showToast('Quiz bắt đầu. Chúc bạn may mắn!');
         },
-        answer(i) {
-          // prevent double answering same question
-          if(this.selected !== null) return;
+        selectAnswer(i) {
+          if(this.showExplanation) return; // already answered
           this.selected = i;
           const correct = (i === this.questions[this.currentQ].ans);
-          this.lastAnsweredCorrect = correct;
-          if(correct) { this.score++; }
-          // visual feedback for 700ms then advance
-          setTimeout(()=>{
-            this.selected = null;
-            this.lastAnsweredCorrect = false;
-            if(this.currentQ < this.questions.length - 1) {
-              this.currentQ++;
-            } else {
-              this.finished = true;
-            }
-            this.saveState();
-          }, 700);
+          if(correct) this.score++;
+          this.showExplanation = true;
           this.saveState();
         },
-        nextQuestion() {
-          // allow skipping
+        nextAfterExplain() {
+          // move to next question after explanation
+          this.showExplanation = false;
+          this.selected = null;
           if(this.currentQ < this.questions.length - 1) {
             this.currentQ++;
-            this.saveState();
           } else {
             this.finished = true;
-            this.saveState();
           }
+          this.saveState();
+        },
+        skipQuestion() {
+          // skip without awarding point
+          if(this.currentQ < this.questions.length - 1) {
+            this.currentQ++;
+          } else {
+            this.finished = true;
+          }
+          this.saveState();
+        },
+        revealAll() {
+          // optional: mark showExplanation true and do not change score further for this Q
+          showToast('Đã hiển thị đáp án và giải thích cho câu này.');
         },
         hint() {
           const ansIdx = this.questions[this.currentQ].ans;
@@ -546,8 +594,9 @@
           this.started = this.finished = false;
           this.currentQ = this.score = 0;
           this.selected = null;
-          this.lastAnsweredCorrect = false;
+          this.showExplanation = false;
           localStorage.removeItem('marx_quiz');
+          showToast('Đã đặt lại quiz.');
         },
         saveState() {
           const state = { started: this.started, finished: this.finished, currentQ: this.currentQ, score: this.score };
